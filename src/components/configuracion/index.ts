@@ -1,0 +1,5 @@
+export { MatrizPoliticas } from './MatrizPoliticas'
+
+
+
+

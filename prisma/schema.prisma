@@ -1,0 +1,665 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// MÓDULO 1: CATALOGACIÓN BIBLIOGRÁFICA (Modelo FRBR)
+// ============================================================================
+
+// 1.1. OBRA (Nivel abstracto)
+model Obra {
+  id             Int      @id @default(autoincrement())
+  tituloUniforme String   @db.VarChar(255)
+  notasGenerales String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relaciones
+  manifestaciones Manifestacion[]
+  autoridades     AutoridadObra[]
+
+  @@index([tituloUniforme])
+  @@map("obra")
+}
+
+// 1.2. MANIFESTACION (La edición específica - Tabla Principal)
+model Manifestacion {
+  id                Int      @id @default(autoincrement())
+  idObra            Int
+  isbnIssn          String?  @db.VarChar(20)
+  tituloPropio      String   @db.VarChar(255)
+  subtitulo         String?  @db.VarChar(255)
+  idEditorial       Int?
+  idFormato         Int
+  idIdioma          Int
+  idPais            Int?
+  numeroEdicion     String?  @db.VarChar(50)
+  lugarPublicacion  String?  @db.VarChar(100)
+  anioPublicacion   Int?
+  descripcionFisica String?  @db.VarChar(100)
+  marcData          Json? // Almacena el registro MARC21 completo
+  imagenTapaUrl     String?  @db.VarChar(255)
+  fechaAlta         DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relaciones
+  obra             Obra                   @relation(fields: [idObra], references: [id], onDelete: Cascade)
+  editorial        Editorial?             @relation(fields: [idEditorial], references: [id])
+  formato          FormatoSoporte         @relation(fields: [idFormato], references: [id])
+  idioma           Idioma                 @relation(fields: [idIdioma], references: [id])
+  pais             Pais?                  @relation(fields: [idPais], references: [id])
+  items            Item[]
+  autoridades      AutoridadRol[]
+  materias         ManifestacionMateria[]
+  objetosDigitales ObjetoDigital[]
+
+  @@index([isbnIssn])
+  @@index([tituloPropio])
+  @@index([idObra])
+  @@map("manifestacion")
+}
+
+// 1.3. ITEM (El ejemplar físico en el estante)
+model Item {
+  id                   Int       @id @default(autoincrement())
+  idManifestacion      Int
+  codigoBarras         String    @unique @db.VarChar(50)
+  numeroInventario     String    @unique @db.VarChar(50)
+  idUbicacionFisica    Int?
+  idProcedencia        Int?
+  idEstadoConservacion Int?
+  disponiblePrestamo   Boolean   @default(true)
+  fechaAdquisicion     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relaciones
+  manifestacion      Manifestacion       @relation(fields: [idManifestacion], references: [id], onDelete: Cascade)
+  ubicacionFisica    UbicacionFisica?    @relation(fields: [idUbicacionFisica], references: [id])
+  procedencia        Procedencia?        @relation(fields: [idProcedencia], references: [id])
+  estadoConservacion EstadoConservacion? @relation(fields: [idEstadoConservacion], references: [id])
+  prestamos          Prestamo[]
+  reservas           Reserva[]
+
+  @@index([codigoBarras])
+  @@index([numeroInventario])
+  @@index([idManifestacion])
+  @@map("item")
+}
+
+// Tablas Maestras - Catálogo
+model Editorial {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @db.VarChar(255)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manifestaciones Manifestacion[]
+
+  @@unique([nombre])
+  @@map("editorial")
+}
+
+model Autoridad {
+  id                Int           @id @default(autoincrement())
+  nombreNormalizado String        @db.VarChar(255)
+  tipo              TipoAutoridad @default(PERSONA)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  obras AutoridadObra[]
+  roles AutoridadRol[]
+
+  @@index([nombreNormalizado])
+  @@map("autoridad")
+}
+
+enum TipoAutoridad {
+  PERSONA
+  INSTITUCION
+}
+
+model TipoRol {
+  id          Int      @id @default(autoincrement())
+  descripcion String   @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  autoridades AutoridadRol[]
+
+  @@unique([descripcion])
+  @@map("tipo_rol")
+}
+
+model AutoridadObra {
+  id          Int      @id @default(autoincrement())
+  idObra      Int
+  idAutoridad Int
+  createdAt   DateTime @default(now())
+
+  obra      Obra      @relation(fields: [idObra], references: [id], onDelete: Cascade)
+  autoridad Autoridad @relation(fields: [idAutoridad], references: [id], onDelete: Cascade)
+
+  @@unique([idObra, idAutoridad])
+  @@map("autoridad_obra")
+}
+
+model AutoridadRol {
+  id              Int      @id @default(autoincrement())
+  idManifestacion Int
+  idAutoridad     Int
+  idRol           Int
+  createdAt       DateTime @default(now())
+
+  manifestacion Manifestacion @relation(fields: [idManifestacion], references: [id], onDelete: Cascade)
+  autoridad     Autoridad     @relation(fields: [idAutoridad], references: [id], onDelete: Cascade)
+  rol           TipoRol       @relation(fields: [idRol], references: [id])
+
+  @@unique([idManifestacion, idAutoridad, idRol])
+  @@map("autoridad_rol")
+}
+
+model Materia {
+  id        Int         @id @default(autoincrement())
+  termino   String      @db.VarChar(255)
+  tipo      TipoMateria @default(TEMA)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  manifestaciones ManifestacionMateria[]
+
+  @@index([termino])
+  @@map("materia")
+}
+
+enum TipoMateria {
+  TEMA
+  GEOGRAFICO
+  TEMPORAL
+}
+
+model ManifestacionMateria {
+  id              Int      @id @default(autoincrement())
+  idManifestacion Int
+  idMateria       Int
+  createdAt       DateTime @default(now())
+
+  manifestacion Manifestacion @relation(fields: [idManifestacion], references: [id], onDelete: Cascade)
+  materia       Materia       @relation(fields: [idMateria], references: [id], onDelete: Cascade)
+
+  @@unique([idManifestacion, idMateria])
+  @@map("manifestacion_materia")
+}
+
+model Idioma {
+  id        Int      @id @default(autoincrement())
+  codigoIso String   @db.VarChar(10)
+  nombre    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manifestaciones Manifestacion[]
+
+  @@unique([codigoIso])
+  @@map("idioma")
+}
+
+model Pais {
+  id        Int      @id @default(autoincrement())
+  codigoIso String   @db.VarChar(10)
+  nombre    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manifestaciones Manifestacion[]
+
+  @@unique([codigoIso])
+  @@map("pais")
+}
+
+model FormatoSoporte {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  manifestaciones Manifestacion[]
+  politicas       PoliticaCirculacion[]
+
+  @@unique([nombre])
+  @@map("formato_soporte")
+}
+
+// ============================================================================
+// MÓDULO 2: ARCHIVO HISTÓRICO (Modelo ISAD-G)
+// ============================================================================
+
+model UnidadArchivistica {
+  id                   Int       @id @default(autoincrement())
+  idPadre              Int?
+  codigoReferencia     String    @db.VarChar(50)
+  titulo               String    @db.VarChar(255)
+  idNivelDescripcion   Int
+  productorNombre      String?   @db.VarChar(255)
+  fechaInicio          DateTime?
+  fechaFin             DateTime?
+  volumenSoporte       String?   @db.VarChar(100)
+  alcanceContenido     String?   @db.Text
+  historiaArchivistica String?   @db.Text
+  idCondicionAcceso    Int?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relación recursiva
+  padre UnidadArchivistica?  @relation("UnidadPadre", fields: [idPadre], references: [id])
+  hijos UnidadArchivistica[] @relation("UnidadPadre")
+
+  // Relaciones
+  nivelDescripcion NivelDescripcion @relation(fields: [idNivelDescripcion], references: [id])
+  condicionAcceso  CondicionAcceso? @relation(fields: [idCondicionAcceso], references: [id])
+  objetosDigitales ObjetoDigital[]
+
+  @@unique([codigoReferencia])
+  @@index([idPadre])
+  @@index([codigoReferencia])
+  @@map("unidad_archivistica")
+}
+
+model NivelDescripcion {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  unidades UnidadArchivistica[]
+
+  @@unique([nombre])
+  @@map("nivel_descripcion")
+}
+
+model CondicionAcceso {
+  id          Int      @id @default(autoincrement())
+  descripcion String   @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  unidades UnidadArchivistica[]
+
+  @@unique([descripcion])
+  @@map("condicion_acceso")
+}
+
+// DAM - Digital Asset Management
+model ObjetoDigital {
+  id                   Int      @id @default(autoincrement())
+  idUnidadArchivistica Int?
+  idManifestacion      Int?
+  nombreArchivo        String   @db.VarChar(255)
+  rutaAlmacenamiento   String   @db.VarChar(500)
+  tipoMime             String   @db.VarChar(50)
+  pesoKb               Int?
+  ocrTexto             String?  @db.Text
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relaciones
+  unidadArchivistica UnidadArchivistica? @relation(fields: [idUnidadArchivistica], references: [id], onDelete: Cascade)
+  manifestacion      Manifestacion?      @relation(fields: [idManifestacion], references: [id], onDelete: Cascade)
+
+  @@index([idUnidadArchivistica])
+  @@index([idManifestacion])
+  @@index([nombreArchivo])
+  @@map("objeto_digital")
+}
+
+// ============================================================================
+// MÓDULO 3: USUARIOS Y CIRCULACIÓN
+// ============================================================================
+
+model UsuarioLector {
+  id                 Int      @id @default(autoincrement())
+  legajoDni          String   @unique @db.VarChar(20)
+  nombre             String   @db.VarChar(100)
+  apellido           String   @db.VarChar(100)
+  email              String   @db.VarChar(150)
+  telefono           String?  @db.VarChar(20)
+  passwordHash       String?  @db.VarChar(255)
+  idCategoriaUsuario Int
+  idEstadoUsuario    Int
+  fechaAlta          DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // Relaciones
+  categoriaUsuario CategoriaUsuario @relation(fields: [idCategoriaUsuario], references: [id])
+  estadoUsuario    EstadoUsuario    @relation(fields: [idEstadoUsuario], references: [id])
+  prestamos        Prestamo[]
+  reservas         Reserva[]
+  sanciones        Sancion[]
+  inscripciones    Inscripcion[]
+
+  @@index([legajoDni])
+  @@index([email])
+  @@map("usuario_lector")
+}
+
+model CategoriaUsuario {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  usuarios  UsuarioLector[]
+  politicas PoliticaCirculacion[]
+
+  @@unique([nombre])
+  @@map("categoria_usuario")
+}
+
+model EstadoUsuario {
+  id          Int      @id @default(autoincrement())
+  descripcion String   @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  usuarios UsuarioLector[]
+
+  @@unique([descripcion])
+  @@map("estado_usuario")
+}
+
+model PoliticaCirculacion {
+  id                  Int      @id @default(autoincrement())
+  idCategoriaUsuario  Int
+  idFormatoSoporte    Int
+  diasPrestamo        Int
+  maxItems            Int
+  renovacionesMax     Int
+  multaDiasSuspension Int
+  activa              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  // Relaciones
+  categoriaUsuario CategoriaUsuario @relation(fields: [idCategoriaUsuario], references: [id])
+  formatoSoporte   FormatoSoporte   @relation(fields: [idFormatoSoporte], references: [id])
+
+  @@unique([idCategoriaUsuario, idFormatoSoporte])
+  @@map("politica_circulacion")
+}
+
+model Prestamo {
+  id                   Int       @id @default(autoincrement())
+  idItem               Int
+  idUsuario            Int
+  idStaffPrestamo      Int?
+  fechaPrestamo        DateTime  @default(now())
+  fechaVencimiento     DateTime
+  fechaDevolucion      DateTime?
+  renovacionesContador Int       @default(0)
+  observaciones        String?   @db.VarChar(255)
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  // Relaciones
+  item          Item          @relation(fields: [idItem], references: [id])
+  usuario       UsuarioLector @relation(fields: [idUsuario], references: [id])
+  staffPrestamo UsuarioStaff? @relation(fields: [idStaffPrestamo], references: [id])
+  sanciones     Sancion[]
+
+  @@index([idItem])
+  @@index([idUsuario])
+  @@index([fechaVencimiento])
+  @@index([fechaDevolucion])
+  @@map("prestamo")
+}
+
+model Reserva {
+  id               Int      @id @default(autoincrement())
+  idItem           Int
+  idUsuario        Int
+  fechaReserva     DateTime @default(now())
+  fechaVencimiento DateTime
+  activa           Boolean  @default(true)
+  notificada       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relaciones
+  item    Item          @relation(fields: [idItem], references: [id])
+  usuario UsuarioLector @relation(fields: [idUsuario], references: [id])
+
+  @@index([idItem])
+  @@index([idUsuario])
+  @@index([activa])
+  @@map("reserva")
+}
+
+model Sancion {
+  id            Int      @id @default(autoincrement())
+  idUsuario     Int
+  idPrestamo    Int?
+  idMotivo      Int
+  fechaInicio   DateTime
+  fechaFin      DateTime
+  activa        Boolean  @default(true)
+  observaciones String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relaciones
+  usuario  UsuarioLector @relation(fields: [idUsuario], references: [id])
+  prestamo Prestamo?     @relation(fields: [idPrestamo], references: [id])
+  motivo   MotivoSancion @relation(fields: [idMotivo], references: [id])
+
+  @@index([idUsuario])
+  @@index([activa])
+  @@index([fechaFin])
+  @@map("sancion")
+}
+
+model MotivoSancion {
+  id          Int      @id @default(autoincrement())
+  descripcion String   @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  sanciones Sancion[]
+
+  @@unique([descripcion])
+  @@map("motivo_sancion")
+}
+
+// ============================================================================
+// MÓDULO 4: EXTENSIÓN CULTURAL
+// ============================================================================
+
+model Evento {
+  id              Int          @id @default(autoincrement())
+  titulo          String       @db.VarChar(255)
+  descripcion     String?      @db.Text
+  idTipoEvento    Int
+  fechaHoraInicio DateTime
+  fechaHoraFin    DateTime
+  idEspacio       Int?
+  cupoMaximo      Int?
+  imagenPromo     String?      @db.VarChar(255)
+  estado          EstadoEvento @default(BORRADOR)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  // Relaciones
+  tipoEvento    TipoEvento     @relation(fields: [idTipoEvento], references: [id])
+  espacio       EspacioFisico? @relation(fields: [idEspacio], references: [id])
+  inscripciones Inscripcion[]
+
+  @@index([fechaHoraInicio])
+  @@index([estado])
+  @@map("evento")
+}
+
+enum EstadoEvento {
+  BORRADOR
+  PUBLICADO
+  CANCELADO
+  FINALIZADO
+}
+
+model TipoEvento {
+  id        Int      @id @default(autoincrement())
+  nombre    String   @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  eventos Evento[]
+
+  @@unique([nombre])
+  @@map("tipo_evento")
+}
+
+model Inscripcion {
+  id               Int      @id @default(autoincrement())
+  idEvento         Int
+  idUsuario        Int
+  fechaInscripcion DateTime @default(now())
+  asistio          Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relaciones
+  evento  Evento        @relation(fields: [idEvento], references: [id], onDelete: Cascade)
+  usuario UsuarioLector @relation(fields: [idUsuario], references: [id], onDelete: Cascade)
+
+  @@unique([idEvento, idUsuario])
+  @@index([idEvento])
+  @@index([idUsuario])
+  @@map("inscripcion")
+}
+
+// ============================================================================
+// MÓDULO 5: ADMINISTRACIÓN Y LOGÍSTICA
+// ============================================================================
+
+model UbicacionFisica {
+  id                   Int      @id @default(autoincrement())
+  edificio             String?  @db.VarChar(50)
+  sala                 String?  @db.VarChar(50)
+  estanteria           String?  @db.VarChar(20)
+  balda                String?  @db.VarChar(20)
+  signaturaTopografica String?  @db.VarChar(50)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  items Item[]
+
+  @@index([signaturaTopografica])
+  @@map("ubicacion_fisica")
+}
+
+model UsuarioStaff {
+  id             Int      @id @default(autoincrement())
+  username       String   @unique @db.VarChar(50)
+  passwordHash   String   @db.VarChar(255)
+  nombreCompleto String   @db.VarChar(100)
+  idRol          Int
+  activo         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relaciones
+  rol       RolSistema     @relation(fields: [idRol], references: [id])
+  prestamos Prestamo[]
+  logs      LogAuditoria[]
+
+  @@index([username])
+  @@map("usuario_staff")
+}
+
+model RolSistema {
+  id           Int      @id @default(autoincrement())
+  nombre       String   @db.VarChar(100)
+  permisosJson Json? // Permisos en formato JSON
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  usuarios UsuarioStaff[]
+
+  @@unique([nombre])
+  @@map("rol_sistema")
+}
+
+model EstadoConservacion {
+  id          Int      @id @default(autoincrement())
+  descripcion String   @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items Item[]
+
+  @@unique([descripcion])
+  @@map("estado_conservacion")
+}
+
+model Procedencia {
+  id          Int      @id @default(autoincrement())
+  descripcion String   @db.VarChar(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items Item[]
+
+  @@unique([descripcion])
+  @@map("procedencia")
+}
+
+model EspacioFisico {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @db.VarChar(100)
+  capacidad   Int?
+  descripcion String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  eventos Evento[]
+
+  @@unique([nombre])
+  @@map("espacio_fisico")
+}
+
+model LogAuditoria {
+  id                 Int       @id @default(autoincrement())
+  idStaff            Int?
+  tablaAfectada      String    @db.VarChar(50)
+  idRegistroAfectado Int?
+  accion             AccionLog // INSERT, UPDATE, DELETE
+  fecha              DateTime  @default(now())
+  datosJson          Json? // Guarda el cambio realizado
+
+  // Relaciones
+  staff UsuarioStaff? @relation(fields: [idStaff], references: [id])
+
+  @@index([tablaAfectada])
+  @@index([fecha])
+  @@index([idStaff])
+  @@map("log_auditoria")
+}
+
+enum AccionLog {
+  INSERT
+  UPDATE
+  DELETE
+}
+
+
+
+
+

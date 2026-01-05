@@ -1,0 +1,59 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-accent;
+  }
+
+  body {
+    @apply bg-background-primary text-text-primary font-body antialiased;
+    font-family: 'Inter', 'Lato', sans-serif;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display;
+    font-family: 'Playfair Display', serif;
+  }
+}
+
+@layer utilities {
+  /* Utilidades para mantener el minimalismo */
+  .border-subtle {
+    border-color: #8C7B75;
+  }
+  
+  .shadow-none {
+    box-shadow: none;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideOut {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+}
+
+
+
+
+
